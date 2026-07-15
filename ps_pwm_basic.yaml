@@ -47,6 +47,12 @@ wifi:
     ssid: "PS-PWM-Basic Fallback Hotspot"
     password: ""
 
+  # Optional manual IP
+  manual_ip:
+    static_ip: 192.168.10.126
+    gateway: 192.168.10.1
+    subnet: 255.255.255.0
+
 captive_portal:
 
 api:
