@@ -14,3 +14,8 @@ __pycache__/
 # OS 자동 생성 파일
 .DS_Store
 Thumbs.db
+
+# 가상 환경 (Virtual Environment)
+venv/
+env/
+.env
