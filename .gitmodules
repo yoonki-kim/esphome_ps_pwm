@@ -1,0 +1,3 @@
+[submodule "components/ps_pwm/esp32_ps_pwm"]
+	path = components/ps_pwm/esp32_ps_pwm
+	url = https://github.com/ykkim-temaat/esp32_ps_pwm.git
