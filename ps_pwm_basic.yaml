@@ -4,7 +4,7 @@ esphome:
   min_version: 2026.5.3
   build_path: build/ps-pwm-basic
   on_boot:
-    priority: 600
+    priority: 500
     then:
       - lambda: |-
           ESP_LOGI("main", "Starting Basic PS-PWM Example (100kHz/200kHz Duty Sweep)...");
