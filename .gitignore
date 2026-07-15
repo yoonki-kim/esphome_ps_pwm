@@ -19,3 +19,6 @@ Thumbs.db
 venv/
 env/
 .env
+
+# 민감한 설정 파일
+secrets.yaml

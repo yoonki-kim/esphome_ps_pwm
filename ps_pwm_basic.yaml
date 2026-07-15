@@ -38,6 +38,25 @@ esp32:
 logger:
   hardware_uart: USB_SERIAL_JTAG
 
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "PS-PWM-Basic Fallback Hotspot"
+    password: ""
+
+captive_portal:
+
+api:
+
+ota:
+  - platform: esphome
+
+web_server:
+  version: 3
+
 globals:
   - id: is_output_enabled
     type: bool
