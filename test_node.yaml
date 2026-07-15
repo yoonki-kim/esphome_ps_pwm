@@ -1,0 +1,78 @@
+esphome:
+  name: esphome-pspwm
+  friendly_name: esphome-pspwm
+  min_version: 2026.5.3
+  build_path: build/esphome-pspwm
+  platformio_options: {}
+  environment_variables: {}
+
+external_components:
+  - source: components
+
+esp32:
+  board: esp32-s3-devkitc-1
+  flash_size: 16MB
+  variant: ESP32S3
+  cpu_frequency: 240MHZ
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_ESP32S3_SPIRAM_SUPPORT: "y"
+      CONFIG_SPIRAM: "y"
+      CONFIG_SPIRAM_MODE_OCT: "y"
+      CONFIG_SPIRAM_SPEED_80M: "y"
+    version: 5.5.4
+    log_level: ERROR
+    components: 
+      - components/ps_pwm/esp32_ps_pwm
+    platform_version: https://github.com/pioarduino/platform-espressif32/releases/download/55.03.38-1/platform-espressif32.zip
+    source: pioarduino/framework-espidf@https://github.com/pioarduino/esp-idf/releases/download/v5.5.4/esp-idf-v5.5.4.tar.xz
+    advanced:
+      compiler_optimization: SIZE
+      enable_idf_experimental_features: false
+      enable_lwip_assert: true
+      ignore_efuse_custom_mac: false
+      ignore_efuse_mac_crc: false
+      sram1_as_iram: false
+      enable_lwip_mdns_queries: true
+      enable_lwip_bridge_interface: false
+      enable_lwip_tcpip_core_locking: true
+      enable_lwip_check_thread_safety: true
+      disable_libc_locks_in_iram: true
+      disable_vfs_support_termios: true
+      disable_vfs_support_select: true
+      disable_vfs_support_dir: true
+      freertos_in_iram: false
+      ringbuf_in_iram: false
+      heap_in_iram: false
+      execute_from_psram: false
+      loop_task_stack_size: 8192
+      enable_ota_rollback: true
+      use_full_certificate_bundle: false
+      enable_full_printf: false
+      disable_debug_stubs: true
+      disable_ocd_aware: true
+      disable_usb_serial_jtag_secondary: true
+      disable_dev_null_vfs: true
+      disable_mbedtls_peer_cert: true
+      disable_mbedtls_pkcs7: true
+      disable_regi2c_in_iram: true
+      adc_oneshot_in_iram: false
+      disable_fatfs: true
+
+logger:
+  baud_rate: 115200
+  level: DEBUG
+
+output:
+  - platform: ps_pwm
+    id: test_ps_pwm
+    pin_lead_a: 5
+    pin_lead_b: 4
+    pin_lag_a: 7
+    pin_lag_b: 6
+    frequency: 100000Hz
+    lead_red: 125ns
+    lead_fed: 125ns
+    lag_red: 125ns
+    lag_fed: 125ns

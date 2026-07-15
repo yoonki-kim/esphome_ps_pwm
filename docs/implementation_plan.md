@@ -2,13 +2,13 @@
 
 본 문서는 `esp32_ps_pwm` ESP-IDF 컴포넌트를 ESPHome의 외부 네이티브 컴포넌트(Native External Component)로 통합하기 위한 구현 계획입니다.
 
-## 검토 및 미결 질문 (Open Questions)
+## 검토 및 결정 사항 (Decisions Made)
 
-1. **프레임워크 버전:** ESP-IDF v5.3.1 및 PlatformIO v6.9.0 환경이라고 명시해 주셨습니다. `test_node.yaml`에서는 기본적으로 `framework: type: esp-idf`를 사용하도록 구성할 예정이나, PlatformIO에서 사용하는 별도의 `platform_packages` 버전 매핑이 있다면 알려주세요.
-2. **동적 제어 항목:** 현재로서는 `FloatOutput`을 통해 Phase Shift Duty(`ps_duty`)를 제어하도록 계획했습니다. 주파수나 데드타임을 런타임 중에 동적으로 변경하는 기능이 필요한가요? 아니면 YAML 상에서 한 번 고정 설정하는 것으로 충분한가요?
-3. **추가 기능(옵션):** 기존 컴포넌트에서 지원하던 ZVS 하드웨어 타이머 추적(Tracking) 기능이나 안전 종료(HW Fault Shutdown) 기능도 ESPHome 레벨의 YAML 옵션으로 노출해야 할까요?
+1. **컴포넌트 연동 방식:** `external_components` 방식(Python + C++ Wrapper)을 최종 채택하여 유지보수성 및 확장성을 확보했습니다.
+2. **테스트 환경:** 터미널 환경에서의 원활한 ESPHome 컴파일을 위해 **Ubuntu OS** 기반에서 빌드를 진행합니다.
+3. **프레임워크 및 메모리:** ESP-IDF v5.5.4, ESP32-S3 DevKit(N16R8, 16MB Flash / 8MB PSRAM)을 기준으로 설정이 완료되었습니다.
 
-## 제안된 구조 및 구현 내용 (Proposed Changes)
+## 제안된 구조 및 구현 내용 (Implemented Changes)
 
 ---
 
