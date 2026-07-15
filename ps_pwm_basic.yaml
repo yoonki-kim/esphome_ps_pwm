@@ -1,0 +1,184 @@
+esphome:
+  name: ps-pwm-basic
+  friendly_name: ps-pwm-basic
+  min_version: 2026.5.3
+  build_path: build/ps-pwm-basic
+  on_boot:
+    priority: 600
+    then:
+      - lambda: |-
+          ESP_LOGI("main", "Starting Basic PS-PWM Example (100kHz/200kHz Duty Sweep)...");
+          // GPIO 8 fault pin 설정 (MCPWM_LOW_LEVEL_TGR)
+          pspwm_enable_hw_fault_shutdown(MCPWM_UNIT_0, GPIO_NUM_8, MCPWM_LOW_LEVEL_TGR);
+          pspwm_clear_hw_fault_shutdown_occurred(MCPWM_UNIT_0);
+
+external_components:
+  - source: components
+
+esp32:
+  board: esp32-s3-devkitc-1
+  flash_size: 16MB
+  variant: ESP32S3
+  cpu_frequency: 240MHZ
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_ESP32S3_SPIRAM_SUPPORT: "y"
+      CONFIG_SPIRAM: "y"
+      CONFIG_SPIRAM_MODE_OCT: "y"
+      CONFIG_SPIRAM_SPEED_80M: "y"
+    version: 5.5.4
+    log_level: ERROR
+    components: 
+      - name: esp32_ps_pwm
+        path: /home/yoonki/esphome/esphome_ps_pwm/components/ps_pwm/esp32_ps_pwm
+    platform_version: https://github.com/pioarduino/platform-espressif32/releases/download/55.03.38-1/platform-espressif32.zip
+    source: pioarduino/framework-espidf@https://github.com/pioarduino/esp-idf/releases/download/v5.5.4/esp-idf-v5.5.4.tar.xz
+
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+
+globals:
+  - id: is_output_enabled
+    type: bool
+    initial_value: 'true'
+  - id: hw_fault_active
+    type: bool
+    initial_value: 'false'
+  - id: sweep_state
+    type: int
+    initial_value: '0'
+  - id: fault_led_toggle
+    type: bool
+    initial_value: 'false'
+
+output:
+  - platform: ps_pwm
+    id: test_ps_pwm
+    pin_lead_a: 5
+    pin_lead_b: 4
+    pin_lag_a: 7
+    pin_lag_b: 6
+    frequency: 100000Hz
+
+light:
+  - platform: esp32_rmt_led_strip
+    rgb_order: GRB
+    pin: 48
+    num_leds: 1
+    chipset: ws2812
+    name: "Onboard LED"
+    id: onboard_led
+
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: 0
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    name: "BOOT Button"
+    on_press:
+      - lambda: |-
+          if (id(hw_fault_active)) {
+            if (pspwm_get_hw_fault_shutdown_present(MCPWM_UNIT_0)) {
+              ESP_LOGW("main", "Cannot clear fault: Hardware fault condition (GPIO 8 LOW) is still physically present!");
+            } else {
+              ESP_LOGI("main", "Fault cleared by user. Returning to Disabled state.");
+              pspwm_disable_output(MCPWM_UNIT_0);
+              pspwm_clear_hw_fault_shutdown_occurred(MCPWM_UNIT_0);
+              id(hw_fault_active) = false;
+              id(is_output_enabled) = false;
+            }
+          } else {
+            if (id(is_output_enabled)) {
+              ESP_LOGI("main", "BUTTON PRESSED: Disabling PWM Output");
+              pspwm_disable_output(MCPWM_UNIT_0);
+              pspwm_set_duty_soft(MCPWM_UNIT_0, 0.0f, 0); // Stop soft-start
+              id(is_output_enabled) = false;
+            } else {
+              ESP_LOGI("main", "BUTTON PRESSED: Enabling PWM Output");
+              pspwm_set_ps_duty(MCPWM_UNIT_0, 0.0f);
+              pspwm_resync_enable_output(MCPWM_UNIT_0);
+              pspwm_set_duty_soft(MCPWM_UNIT_0, 1.0f, 10000); // Trigger 10s soft-start to 100%
+              id(is_output_enabled) = true;
+            }
+          }
+
+interval:
+  - interval: 100ms
+    then:
+      - lambda: |-
+          // 1. 하드웨어 결함 감지 및 락(Latch)
+          if (pspwm_get_hw_fault_shutdown_occurred(MCPWM_UNIT_0) && !id(hw_fault_active)) {
+            ESP_LOGE("main", "=======================================================");
+            ESP_LOGE("main", "CRITICAL ERROR: Hardware Fault Detected on GPIO 8!");
+            ESP_LOGE("main", "Outputs are securely latched LOW.");
+            ESP_LOGE("main", "Please inspect hardware and press BOOT button (GPIO 0) to clear the fault.");
+            ESP_LOGE("main", "=======================================================");
+            id(hw_fault_active) = true;
+          }
+          
+          // 2. 결함 활성화 시 붉은색 점멸 동작
+          if (id(hw_fault_active)) {
+            id(fault_led_toggle) = !id(fault_led_toggle);
+            auto call = id(onboard_led).turn_on();
+            call.set_brightness(1.0);
+            if (id(fault_led_toggle)) {
+              call.set_rgb(1.0, 0.0, 0.0); // Red
+            } else {
+              call.set_rgb(0.0, 0.0, 0.0); // Off
+            }
+            call.perform();
+          }
+
+  - interval: 5s
+    then:
+      - lambda: |-
+          // 하드웨어 결함 중에는 스윕 무시
+          if (id(hw_fault_active)) return;
+          
+          // 출력이 비활성화 상태인 경우
+          if (!id(is_output_enabled)) {
+             ESP_LOGI("main", "STATUS: PWM Disabled | System Idle | Status LED: OFF");
+             auto call = id(onboard_led).turn_on();
+             call.set_rgb(0.0, 0.0, 0.0);
+             call.perform();
+             return;
+          }
+          
+          // 상태 순환 로직
+          int state = id(sweep_state);
+          id(sweep_state) = (state + 1) % 4;
+          
+          auto call = id(onboard_led).turn_on();
+          call.set_brightness(1.0);
+          
+          switch(state) {
+            case 0:
+              ESP_LOGI("main", "STATE 0: Freq 100 kHz | Duty 25%% -> 75%% (Softstart 2s) | LED: GREEN");
+              call.set_rgb(0.0, 1.0, 0.0);
+              pspwm_set_frequency(MCPWM_UNIT_0, 100e3);
+              pspwm_set_ps_duty(MCPWM_UNIT_0, 0.25f);
+              pspwm_set_duty_soft(MCPWM_UNIT_0, 0.75f, 2000);
+              break;
+            case 1:
+              ESP_LOGI("main", "STATE 1: Freq 100 kHz | Duty 75%% -> 25%% (Softstart 2s) | LED: YELLOW");
+              call.set_rgb(1.0, 1.0, 0.0);
+              pspwm_set_duty_soft(MCPWM_UNIT_0, 0.25f, 2000);
+              break;
+            case 2:
+              ESP_LOGI("main", "STATE 2: Freq 200 kHz | Duty 25%% -> 75%% (Softstart 2s) | LED: BLUE");
+              call.set_rgb(0.0, 0.0, 1.0);
+              pspwm_set_frequency(MCPWM_UNIT_0, 200e3);
+              pspwm_set_ps_duty(MCPWM_UNIT_0, 0.25f);
+              pspwm_set_duty_soft(MCPWM_UNIT_0, 0.75f, 2000);
+              break;
+            case 3:
+              ESP_LOGI("main", "STATE 3: Freq 200 kHz | Duty 75%% -> 25%% (Softstart 2s) | LED: PURPLE");
+              call.set_rgb(1.0, 0.0, 1.0);
+              pspwm_set_duty_soft(MCPWM_UNIT_0, 0.25f, 2000);
+              break;
+          }
+          call.perform();
