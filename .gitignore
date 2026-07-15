@@ -1,0 +1,16 @@
+# ESPHome 빌드 및 캐시 폴더
+.esphome/
+build/
+
+# Python 캐시 폴더
+__pycache__/
+*.py[cod]
+*$py.class
+
+# AI 에이전트 작업 공간 (로컬 캐시)
+.agents/
+.antigravity/
+
+# OS 자동 생성 파일
+.DS_Store
+Thumbs.db
