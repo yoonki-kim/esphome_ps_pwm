@@ -49,7 +49,7 @@ wifi:
 
   # Optional manual IP
   manual_ip:
-    static_ip: 192.168.10.126
+    static_ip: 192.168.10.133
     gateway: 192.168.10.1
     subnet: 255.255.255.0
 

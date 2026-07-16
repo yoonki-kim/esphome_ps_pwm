@@ -1,0 +1,230 @@
+esphome:
+  name: ps-pwm-advance
+  friendly_name: ps-pwm-advance
+  min_version: 2026.5.3
+  build_path: build/ps-pwm-advance
+  on_boot:
+    priority: 500
+    then:
+      - lambda: |-
+          ESP_LOGI("main", "Starting Advanced PS-PWM Example...");
+          pspwm_enable_hw_fault_shutdown(MCPWM_UNIT_0, GPIO_NUM_8, MCPWM_LOW_LEVEL_TGR);
+          pspwm_clear_hw_fault_shutdown_occurred(MCPWM_UNIT_0);
+          
+          // 부팅 시 안전을 위해 초기에는 출력 비활성화 상태로 시작
+          id(is_output_enabled) = false;
+          auto call = id(onboard_led).turn_off();
+          call.perform();
+
+external_components:
+  - source: components
+
+esp32:
+  board: esp32-s3-devkitc-1
+  flash_size: 16MB
+  variant: ESP32S3
+  cpu_frequency: 240MHZ
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_ESP32S3_SPIRAM_SUPPORT: "y"
+      CONFIG_SPIRAM: "y"
+      CONFIG_SPIRAM_MODE_OCT: "y"
+      CONFIG_SPIRAM_SPEED_80M: "y"
+    version: 5.5.4
+    log_level: ERROR
+    components: 
+      - name: esp32_ps_pwm
+        path: /home/yoonki/esphome/esphome_ps_pwm/components/ps_pwm/esp32_ps_pwm
+    platform_version: https://github.com/pioarduino/platform-espressif32/releases/download/55.03.38-1/platform-espressif32.zip
+    source: pioarduino/framework-espidf@https://github.com/pioarduino/esp-idf/releases/download/v5.5.4/esp-idf-v5.5.4.tar.xz
+
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  ap:
+    ssid: "PS-PWM-Advance Fallback"
+    password: ""
+
+  # Optional manual IP
+  manual_ip:
+    static_ip: 192.168.10.133
+    gateway: 192.168.10.1
+    subnet: 255.255.255.0
+
+captive_portal:
+api:
+ota:
+  - platform: esphome
+web_server:
+  version: 3
+
+globals:
+  - id: is_output_enabled
+    type: bool
+    initial_value: 'false'
+  - id: hw_fault_active
+    type: bool
+    initial_value: 'false'
+
+output:
+  - platform: ps_pwm
+    id: test_ps_pwm
+    pin_lead_a: 5
+    pin_lead_b: 4
+    pin_lag_a: 7
+    pin_lag_b: 6
+    frequency: 200000Hz
+
+light:
+  - platform: esp32_rmt_led_strip
+    rgb_order: GRB
+    pin: 48
+    num_leds: 1
+    chipset: ws2812
+    name: "Onboard LED"
+    id: onboard_led
+
+switch:
+  - platform: template
+    name: "PWM Output"
+    id: ui_pwm_switch
+    optimistic: false
+    turn_on_action:
+      - lambda: |-
+          if (id(hw_fault_active)) {
+            ESP_LOGW("main", "Cannot enable output: Hardware fault is active!");
+            return;
+          }
+          ESP_LOGI("main", "[SWITCH] Enabling PWM Output with stored Duty and Frequency");
+          pspwm_set_frequency(MCPWM_UNIT_0, id(ui_frequency).state);
+          pspwm_set_ps_duty(MCPWM_UNIT_0, 0.0f);
+          pspwm_resync_enable_output(MCPWM_UNIT_0);
+          float target_duty = id(ui_duty).state / 100.0f;
+          pspwm_set_duty_soft(MCPWM_UNIT_0, target_duty, id(ui_soft_start).state);
+          id(is_output_enabled) = true;
+          id(ui_pwm_switch).publish_state(true);
+          // 백색 점등, 밝기는 듀티 비율 연동
+          auto call = id(onboard_led).turn_on();
+          call.set_rgb(1.0f, 1.0f, 1.0f);
+          call.set_brightness(target_duty);
+          call.perform();
+    turn_off_action:
+      - lambda: |-
+          // 실제로 출력이 켜진 상태일 때만 드라이버를 건드림
+          // 부팅 초기화(setup) 단계에서 자동 호출 시에는 무시
+          if (!id(is_output_enabled)) return;
+          ESP_LOGI("main", "[SWITCH] Disabling PWM Output");
+          pspwm_disable_output(MCPWM_UNIT_0);
+          pspwm_set_duty_soft(MCPWM_UNIT_0, 0.0f, 0);
+          id(is_output_enabled) = false;
+          id(ui_pwm_switch).publish_state(false);
+          auto call = id(onboard_led).turn_off();
+          call.perform();
+
+number:
+  - platform: template
+    name: "Target Frequency"
+    id: ui_frequency
+    unit_of_measurement: "Hz"
+    min_value: 10000
+    max_value: 300000
+    step: 1000
+    initial_value: 100000
+    restore_value: true
+    optimistic: true
+    on_value:
+      then:
+        - lambda: |-
+            if (id(is_output_enabled)) {
+              pspwm_set_frequency(MCPWM_UNIT_0, x);
+            }
+
+  - platform: template
+    name: "Target Duty Cycle"
+    id: ui_duty
+    unit_of_measurement: "%"
+    min_value: 0.0
+    max_value: 100.0
+    step: 1.0
+    initial_value: 25.0
+    restore_value: true
+    optimistic: true
+    on_value:
+      then:
+        - lambda: |-
+            if (id(is_output_enabled)) {
+              pspwm_set_duty_soft(MCPWM_UNIT_0, x / 100.0f, id(ui_soft_start).state);
+              // 백색 LED, 듀티와 밝기 연동
+              auto call = id(onboard_led).turn_on();
+              call.set_rgb(1.0f, 1.0f, 1.0f);
+              call.set_brightness(x / 100.0f);
+              call.perform();
+            }
+
+  - platform: template
+    name: "Soft Start Time"
+    id: ui_soft_start
+    unit_of_measurement: "ms"
+    min_value: 0
+    max_value: 10000
+    step: 100
+    initial_value: 2000
+    restore_value: true
+    optimistic: true
+
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: 0
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    name: "BOOT Button"
+    on_press:
+      - lambda: |-
+          // Fault 상태일 때는 결함 해제 시도
+          if (id(hw_fault_active)) {
+            if (pspwm_get_hw_fault_shutdown_present(MCPWM_UNIT_0)) {
+              ESP_LOGW("main", "Cannot clear fault: Hardware fault condition is still present!");
+            } else {
+              ESP_LOGI("main", "[BUTTON] Fault cleared. Returning to Disabled state.");
+              pspwm_disable_output(MCPWM_UNIT_0);
+              pspwm_clear_hw_fault_shutdown_occurred(MCPWM_UNIT_0);
+              id(hw_fault_active) = false;
+              // 스위치 상태도 OFF로 동기화
+              id(ui_pwm_switch).publish_state(false);
+              auto call = id(onboard_led).turn_off();
+              call.perform();
+            }
+          } else {
+            // 스위치 toggle: 현재 상태에 따라 ON/OFF 액션 호출
+            if (id(is_output_enabled)) {
+              id(ui_pwm_switch).turn_off();
+            } else {
+              id(ui_pwm_switch).turn_on();
+            }
+          }
+
+interval:
+  - interval: 100ms
+    then:
+      - lambda: |-
+          // 하드웨어 결함 감지
+          if (pspwm_get_hw_fault_shutdown_occurred(MCPWM_UNIT_0) && !id(hw_fault_active)) {
+            ESP_LOGE("main", "CRITICAL ERROR: Hardware Fault Detected on GPIO 8!");
+            id(hw_fault_active) = true;
+            id(is_output_enabled) = false;
+            // 스위치 상태도 OFF로 동기화
+            id(ui_pwm_switch).publish_state(false);
+            // Fault 상태일 때 적색 LED 점등 (밝기 최대)
+            auto call = id(onboard_led).turn_on();
+            call.set_rgb(1.0f, 0.0f, 0.0f);
+            call.set_brightness(1.0f);
+            call.perform();
+          }
